@@ -91,6 +91,7 @@ def display():
 
             if available_metrics:
                 selected_metric = st.selectbox("📌 Chọn metric để vẽ biểu đồ", available_metrics)
+
                 if selected_metric:
                     comparison_df[selected_metric] = pd.to_numeric(comparison_df[selected_metric], errors='coerce')
                     valid_runs = comparison_df.dropna(subset=[selected_metric])
@@ -102,11 +103,14 @@ def display():
                         ax.set_title(f"So sánh {selected_metric}")
                         ax.tick_params(axis='x', rotation=45)
                         st.pyplot(fig)
+                        plt.close(fig)  # Đóng figure sau khi hiển thị
                     else:
                         st.warning(f"Không có dữ liệu {selected_metric} hợp lệ để vẽ biểu đồ.")
             else:
                 st.warning("Không có metric nào để so sánh.")
-    else:
-        st.warning("Không tìm thấy thí nghiệm nào.")
+    except Exception as e:
+        st.error(f"❌ Đã xảy ra lỗi: {e}")
+        st.warning("Vui lòng kiểm tra lại dữ liệu hoặc liên hệ quản trị viên.")
+
 if __name__ == "__main__":
     display()
