@@ -9,6 +9,9 @@ import matplotlib.pyplot as plt
 import dagshub
 
 def list_logged_models(experiment_id):
+    """
+    Lấy danh sách các mô hình đã log trong một thí nghiệm.
+    """
     client = MlflowClient()
     runs = client.search_runs(experiment_ids=[experiment_id])
     gmt7 = pytz.timezone("Asia/Bangkok")
@@ -25,29 +28,45 @@ def list_logged_models(experiment_id):
     return df
 
 def display():
-    try:
-        dagshub.init(repo_owner='NewbieHocIT', repo_name='MocMayvsPython', mlflow=True)
-        os.environ['MLFLOW_TRACKING_USERNAME'] = 'NewbieHocIT'
-        os.environ['MLFLOW_TRACKING_PASSWORD'] = '681dda9a41f9271a144aa94fa8624153a3c95696'
-        mlflow.set_tracking_uri("https://dagshub.com/NewbieHocIT/MocMayvsPython.mlflow")
-        client = MlflowClient()
-        experiments = client.search_experiments()
-        print('Kết nối MLflow thành công!')
-    except Exception as e:
-        st.warning("Không thể kết nối với MLflow hoặc DagsHub. Vui lòng kiểm tra cài đặt.")
-        experiments = []
-
     st.title("🚀 MLflow Model Logging & Registry")
 
-    if experiments:
+    try:
+        # Lấy thông tin từ secrets.toml
+        MLFLOW_TRACKING_URI = st.secrets["MLFLOW_TRACKING_URI"]
+        MLFLOW_TRACKING_USERNAME = st.secrets["MLFLOW_TRACKING_USERNAME"]
+        MLFLOW_TRACKING_PASSWORD = st.secrets["MLFLOW_TRACKING_PASSWORD"]
+
+        # Khởi tạo kết nối với MLflow và DagsHub
+        dagshub.init(repo_owner='NewbieHocIT', repo_name='MocMayvsPython', mlflow=True)
+        os.environ['MLFLOW_TRACKING_USERNAME'] = MLFLOW_TRACKING_USERNAME
+        os.environ['MLFLOW_TRACKING_PASSWORD'] = MLFLOW_TRACKING_PASSWORD
+        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+
+        st.success("✅ Kết nối MLflow thành công!")
+    except Exception as e:
+        st.error(f"❌ Lỗi khi kết nối MLflow hoặc DagsHub: {e}")
+        st.warning("Vui lòng kiểm tra lại cài đặt hoặc thông tin xác thực.")
+        return
+
+    try:
+        # Lấy danh sách thí nghiệm
+        client = MlflowClient()
+        experiments = client.search_experiments()
+        if not experiments:
+            st.warning("Không tìm thấy thí nghiệm nào.")
+            return
+
+        # Hiển thị danh sách thí nghiệm
         experiment_names = [exp.name for exp in experiments]
         selected_experiment = st.selectbox("📊 Chọn thí nghiệm", experiment_names)
         experiment_id = next(exp.experiment_id for exp in experiments if exp.name == selected_experiment)
-        
+
+        # Hiển thị danh sách các mô hình đã log
         st.subheader("📌 Các mô hình đã log")
         models_df = list_logged_models(experiment_id)
         st.dataframe(models_df, use_container_width=True)
-        
+
+        # So sánh các mô hình
         st.subheader("📈 So sánh các mô hình")
         available_run_names = models_df["Run Name"].tolist()
         selected_run_names = st.multiselect("🔍 Chọn Run Name để so sánh", available_run_names)
@@ -69,10 +88,10 @@ def display():
 
             available_metrics = [col for col in comparison_df.columns if col not in ["Run ID", "Run Name", "Model Type"]]
             st.write("Các metric hợp lệ:", available_metrics)
-            
+
             if available_metrics:
                 selected_metric = st.selectbox("📌 Chọn metric để vẽ biểu đồ", available_metrics)
-                
+
                 if selected_metric:
                     comparison_df[selected_metric] = pd.to_numeric(comparison_df[selected_metric], errors='coerce')
                     valid_runs = comparison_df.dropna(subset=[selected_metric])
@@ -88,8 +107,9 @@ def display():
                         st.warning(f"Không có dữ liệu {selected_metric} hợp lệ để vẽ biểu đồ.")
             else:
                 st.warning("Không có metric nào để so sánh.")
-    else:
-        st.warning("Không tìm thấy thí nghiệm nào.")
+    except Exception as e:
+        st.error(f"❌ Đã xảy ra lỗi: {e}")
+        st.warning("Vui lòng kiểm tra lại dữ liệu hoặc liên hệ quản trị viên.")
 
 if __name__ == "__main__":
     display()
