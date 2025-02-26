@@ -31,16 +31,12 @@ def display():
     st.title("🚀 MLflow Model Logging & Registry")
 
     try:
-        # Lấy thông tin từ secrets.toml
-        MLFLOW_TRACKING_URI = st.secrets["MLFLOW_TRACKING_URI"]
-        MLFLOW_TRACKING_USERNAME = st.secrets["MLFLOW_TRACKING_USERNAME"]
-        MLFLOW_TRACKING_PASSWORD = st.secrets["MLFLOW_TRACKING_PASSWORD"]
 
-        # Khởi tạo kết nối với MLflow và DagsHub
         dagshub.init(repo_owner='NewbieHocIT', repo_name='MocMayvsPython', mlflow=True)
-        os.environ['MLFLOW_TRACKING_USERNAME'] = MLFLOW_TRACKING_USERNAME
-        os.environ['MLFLOW_TRACKING_PASSWORD'] = MLFLOW_TRACKING_PASSWORD
-        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+        os.environ["MLFLOW_TRACKING_URI"] = st.secrets["dagshub"]["MLFLOW_TRACKING_URI"]
+        os.environ["MLFLOW_TRACKING_USERNAME"] = st.secrets["dagshub"]["MLFLOW_TRACKING_USERNAME"]
+        os.environ["MLFLOW_TRACKING_PASSWORD"] = st.secrets["dagshub"]["MLFLOW_TRACKING_PASSWORD"]  
+        mlflow.set_tracking_uri("https://dagshub.com/NewbieHocIT/MocMayvsPython.mlflow")
 
         st.success("✅ Kết nối MLflow thành công!")
     except Exception as e:
