@@ -7,6 +7,7 @@ import pytz
 import os
 import matplotlib.pyplot as plt
 import dagshub
+import requests
 
 def list_logged_models(experiment_id):
     """
@@ -27,10 +28,28 @@ def list_logged_models(experiment_id):
     } for r in runs])
     return df
 
+def check_connection():
+    """
+    Kiểm tra kết nối đến DagsHub.
+    """
+    try:
+        response = requests.get("https://dagshub.com/NewbieHocIT/MocMayvsPython.mlflow")
+        if response.status_code == 200:
+            st.success("Kết nối đến DagsHub thành công!")
+        else:
+            st.warning(f"Không thể kết nối đến DagsHub. Mã lỗi: {response.status_code}")
+    except Exception as e:
+        st.error(f"Lỗi khi kiểm tra kết nối: {e}")
+
 def display():
     st.title("🚀 MLflow Model Logging & Registry")
 
     try:
+        # Kiểm tra xem các khóa có tồn tại trong secrets không
+        if "MLFLOW_TRACKING_URI" not in st.secrets or "MLFLOW_TRACKING_USERNAME" not in st.secrets or "MLFLOW_TRACKING_PASSWORD" not in st.secrets:
+            st.error("❌ Thiếu thông tin xác thực trong secrets.toml. Vui lòng kiểm tra lại.")
+            return
+
         # Lấy thông tin từ secrets.toml
         MLFLOW_TRACKING_URI = st.secrets["MLFLOW_TRACKING_URI"]
         MLFLOW_TRACKING_USERNAME = st.secrets["MLFLOW_TRACKING_USERNAME"]
