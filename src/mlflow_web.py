@@ -103,6 +103,7 @@ def display():
                         ax.set_title(f"So sánh {selected_metric}")
                         ax.tick_params(axis='x', rotation=45)
                         st.pyplot(fig)
+                        plt.close(fig)  # Đóng figure sau khi hiển thị
                     else:
                         st.warning(f"Không có dữ liệu {selected_metric} hợp lệ để vẽ biểu đồ.")
             else:
