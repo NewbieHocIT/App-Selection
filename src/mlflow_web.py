@@ -7,6 +7,16 @@ import pytz
 import os
 import dagshub
 
+@st.cache_resource
+def initialize_dagshub():
+    """
+    Khởi tạo kết nối với DagsHub và MLflow.
+    """
+    dagshub.init(repo_owner='NewbieHocIT', repo_name='MocMayvsPython', mlflow=True)
+    os.environ['MLFLOW_TRACKING_USERNAME'] = st.secrets["MLFLOW_TRACKING_USERNAME"]
+    os.environ['MLFLOW_TRACKING_PASSWORD'] = st.secrets["MLFLOW_TRACKING_PASSWORD"]
+    mlflow.set_tracking_uri(st.secrets["MLFLOW_TRACKING_URI"])
+
 def list_logged_models(experiment_id):
     """
     Lấy danh sách các mô hình đã log trong một thí nghiệm.
@@ -32,17 +42,8 @@ def display():
     st.title("🚀 MLflow Model Logging & Registry")
 
     try:
-        # Lấy thông tin từ secrets.toml
-        MLFLOW_TRACKING_URI = st.secrets["MLFLOW_TRACKING_URI"]
-        MLFLOW_TRACKING_USERNAME = st.secrets["MLFLOW_TRACKING_USERNAME"]
-        MLFLOW_TRACKING_PASSWORD = st.secrets["MLFLOW_TRACKING_PASSWORD"]
-
-        # Khởi tạo kết nối với MLflow và DagsHub
-        dagshub.init(repo_owner='NewbieHocIT', repo_name='MocMayvsPython', mlflow=True)
-        os.environ['MLFLOW_TRACKING_USERNAME'] = MLFLOW_TRACKING_USERNAME
-        os.environ['MLFLOW_TRACKING_PASSWORD'] = MLFLOW_TRACKING_PASSWORD
-        mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
-
+        # Khởi tạo kết nối với DagsHub và MLflow
+        initialize_dagshub()
         st.success("✅ Kết nối MLflow thành công!")
     except Exception as e:
         st.error(f"❌ Lỗi khi kết nối MLflow hoặc DagsHub: {e}")
