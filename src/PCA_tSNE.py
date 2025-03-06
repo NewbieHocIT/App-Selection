@@ -7,6 +7,7 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
+import plotly.graph_objects as go
 
 # Load dữ liệu MNIST
 def load_mnist():
@@ -73,15 +74,30 @@ def visualize_data(X_reduced, y, n_components):
 
     # Tạo biểu đồ 3D hoặc 2D tùy thuộc vào số chiều
     if n_components >= 3:
-        fig = px.scatter_3d(
-            df, 
-            x=x_axis, 
-            y=y_axis, 
-            z=z_axis, 
-            color='Digit', 
+        fig = go.Figure(data=[go.Scatter3d(
+            x=df[x_axis],
+            y=df[y_axis],
+            z=df[z_axis],
+            mode='markers',
+            marker=dict(
+                size=3,  # Giảm kích thước điểm để mượt hơn
+                opacity=0.7,
+                color=df['Digit'].astype(int),  # Chuyển số để tạo màu
+                colorscale='Viridis',  # Dùng bảng màu phổ biến
+                colorbar=dict(title="Digit")  # Hiển thị thang màu
+            ),
+            text=df['Digit'],  # Hiển thị nhãn số khi di chuột
+            hoverinfo='text'
+        )])
+
+        fig.update_layout(
             title="3D Visualization of Reduced Data",
-            labels={'color': 'Digit'},
-            color_continuous_scale=px.colors.sequential.Viridis  # Sử dụng bảng màu phong phú
+            scene=dict(
+                xaxis_title=x_axis,
+                yaxis_title=y_axis,
+                zaxis_title=z_axis
+            ),
+            showlegend=False  # Tắt legend vì đã có màu sắc trong colorbar
         )
     else:
         fig = px.scatter(
