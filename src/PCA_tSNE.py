@@ -9,10 +9,19 @@ from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
 import plotly.graph_objects as go
 
-# Load dữ liệu MNIST
+CACHE_PATH = "mnist_cache.pkl"
+
 def load_mnist():
-    mnist = fetch_openml('mnist_784', version=1, as_frame=False)
-    X, y = mnist.data, mnist.target.astype(int)
+    if os.path.exists(CACHE_PATH):
+        print("🔄 Đang tải dữ liệu MNIST từ cache...")
+        X, y = joblib.load(CACHE_PATH)
+    else:
+        print("📥 Đang tải dữ liệu MNIST từ OpenML...")
+        mnist = fetch_openml('mnist_784', version=1, as_frame=False)
+        X, y = mnist.data, mnist.target.astype(int)
+        joblib.dump((X, y), CACHE_PATH)  # Lưu vào cache
+        print("✅ Dữ liệu đã được lưu vào cache!")
+
     return X, y
 
 # Thiết lập MLflow
