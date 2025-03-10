@@ -317,8 +317,6 @@ def du_doan():
             try:
                 image = Image.fromarray((canvas_result.image_data[:, :, 0]).astype(np.uint8))
                 image = image.resize((28, 28)).convert("L")
-                image = ImageOps.invert(image)
-                st.image(image, caption="Ảnh vẽ đã được xử lý", use_column_width=False)
 
                 img_array = np.array(image).reshape(1, -1) / 255.0
 
