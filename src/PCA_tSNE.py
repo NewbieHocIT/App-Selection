@@ -191,6 +191,7 @@ def run_pca_tsne():
         )
 
         if st.button("Log vào MLflow", key="pca_tsne_log_button"):
+            mlflow_input()
             with mlflow.start_run(run_name=run_name):
                 mlflow.log_param("num_samples", num_samples)
                 mlflow.log_param("reduction_method", reduction_method)
