@@ -2,13 +2,13 @@ import streamlit as st
 import pandas as pd
 import os
 import plotly.express as px
+import joblib
 import mlflow
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.datasets import fetch_openml
 from sklearn.model_selection import train_test_split
 import plotly.graph_objects as go
-
 CACHE_PATH = "mnist_cache.pkl"
 
 def load_mnist():
@@ -146,6 +146,7 @@ def run_pca_tsne():
         )
 
     st.success(f"✅ Đã chọn {num_samples} mẫu từ {total_samples} dữ liệu.")
+
 
     # Chọn phương pháp giảm chiều
     reduction_method = st.selectbox(
