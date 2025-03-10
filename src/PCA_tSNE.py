@@ -124,7 +124,7 @@ def visualize_data(X_reduced, y, n_components):
 
 # Hàm chính để chạy ứng dụng
 def run_pca_tsne():
-    st.title("📌 Giảm số lượng mẫu dữ liệu")
+    st.title("📌 PCA & t-SNE")
 
     # Đọc dữ liệu
     X, y = load_mnist()
