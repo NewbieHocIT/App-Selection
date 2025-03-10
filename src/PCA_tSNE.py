@@ -124,21 +124,28 @@ def visualize_data(X_reduced, y, n_components):
 
 # Hàm chính để chạy ứng dụng
 def run_pca_tsne():
-    st.title("PCA & t-SNE Visualization")
+    st.title("📌 Giảm số lượng mẫu dữ liệu")
 
-    # Thiết lập MLflow
-    mlflow_input()
-
-    # Tải dữ liệu MNIST
+    # Đọc dữ liệu
     X, y = load_mnist()
+    total_samples = X.shape[0]
 
     # Chọn số lượng mẫu
     num_samples = st.slider(
-        "Chọn số lượng mẫu để giảm chiều:", 
-        1000, X.shape[0], 10000, 
+        "📌 Chọn số lượng mẫu để giảm chiều:",
+        1000, total_samples, 10000,
         key="pca_tsne_num_samples_slider"
     )
-    X_selected, _, y_selected, _ = train_test_split(X, y, train_size=num_samples, stratify=y, random_state=42)
+
+    # Nếu chọn toàn bộ dữ liệu, không cần giảm
+    if num_samples == total_samples:
+        X_selected, y_selected = X, y
+    else:
+        X_selected, _, y_selected, _ = train_test_split(
+            X, y, train_size=num_samples, stratify=y, random_state=42
+        )
+
+    st.success(f"✅ Đã chọn {num_samples} mẫu từ {total_samples} dữ liệu.")
 
     # Chọn phương pháp giảm chiều
     reduction_method = st.selectbox(
