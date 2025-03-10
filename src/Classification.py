@@ -83,10 +83,10 @@ def split_data():
     X, y = load_mnist() 
     total_samples = X.shape[0]
 
-    
     # Nếu chưa có cờ "data_split_done", đặt mặc định là False
     if "data_split_done" not in st.session_state:
         st.session_state.data_split_done = False  
+
 
     # Thanh kéo chọn số lượng ảnh để train
     num_samples = st.slider("📌 Chọn số lượng ảnh để train:", 1000, total_samples, 10000)
@@ -97,13 +97,15 @@ def split_data():
     val_size = st.slider("📌 Chọn % dữ liệu Validation (trong phần Train)", 0, 50, 15)
     st.write(f"📌 **Tỷ lệ phân chia:** Test={test_size}%, Validation={val_size}%, Train={remaining_size - val_size}%")
 
-    if st.button("✅ Xác nhận & Lưu",key="luu") and not st.session_state.data_split_done:
+    if st.button("✅ Xác nhận & Lưu", key="luu"):
         st.session_state.data_split_done = True  # Đánh dấu đã chia dữ liệu
         
-        # Chia dữ liệu theo tỷ lệ đã chọn
-        X_selected, _, y_selected, _ = train_test_split(
-            X, y, train_size=num_samples, stratify=y, random_state=42
-        )
+        if num_samples == total_samples:
+            X_selected, y_selected = X, y
+        else:
+            X_selected, _, y_selected, _ = train_test_split(
+                X, y, train_size=num_samples, stratify=y, random_state=42
+            )
 
         # Chia train/test
         stratify_option = y_selected if len(np.unique(y_selected)) > 1 else None
@@ -112,14 +114,18 @@ def split_data():
         )
 
         # Chia train/val
-        stratify_option = y_train_full if len(np.unique(y_train_full)) > 1 else None
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_train_full, y_train_full, test_size=val_size / (100 - test_size),
-            stratify=stratify_option, random_state=42
-        )
+        if val_size > 0:
+            stratify_option = y_train_full if len(np.unique(y_train_full)) > 1 else None
+            X_train, X_val, y_train, y_val = train_test_split(
+                X_train_full, y_train_full, test_size=val_size / (100 - test_size),
+                stratify=stratify_option, random_state=42
+            )
+        else:
+            X_train, y_train = X_train_full, y_train_full
+            X_val, y_val = np.array([]), np.array([])  # Validation rỗng nếu val_size = 0
 
         # Lưu dữ liệu vào session_state
-        st.session_state.total_samples= num_samples
+        st.session_state.total_samples = num_samples
         st.session_state["classification_X_train"] = X_train
         st.session_state["classification_X_val"] = X_val
         st.session_state["classification_X_test"] = X_test
@@ -139,7 +145,7 @@ def split_data():
         st.table(summary_df)
 
     elif st.session_state.data_split_done:
-        st.info("✅ Dữ liệu đã được chia.")
+        st.info("✅ Dữ liệu đã được chia. Nhấn **🔄 Chia lại dữ liệu** để thay đổi.")
 def mlflow_input():
     DAGSHUB_MLFLOW_URI = "https://dagshub.com/NewbieHocIT/MocMayvsPython.mlflow"
     st.session_state['mlflow_url'] = DAGSHUB_MLFLOW_URI
