@@ -227,28 +227,24 @@ class ProgressBarCallback(Callback):
 
 
 
+
 # Hàm thực hiện Pseudo Labelling
-# Hàm thực hiện Pseudo Labelling
-# Hàm thực hiện Pseudo Labelling
+# Hàm pseudo_labeling() với phần hiển thị thông tin mô hình
 def pseudo_labeling():
     st.header("⚙️ Pseudo Labelling với Neural Network")
 
-    # Kiểm tra dữ liệu đã được chia chưa
     if "neural_X_train" not in st.session_state or "neural_X_test" not in st.session_state:
         st.error("⚠️ Chưa có dữ liệu! Hãy chia dữ liệu trước.")
         return
 
-    # Lấy dữ liệu từ session_state
     X_train_full = st.session_state["neural_X_train"]
     y_train_full = st.session_state["neural_y_train"]
     X_test = st.session_state["neural_X_test"]
     y_test = st.session_state["neural_y_test"]
 
-    # Chuẩn hóa dữ liệu
     X_train_full = X_train_full.reshape(-1, 28 * 28) / 255.0
     X_test = X_test.reshape(-1, 28 * 28) / 255.0
 
-    # (1) Lấy 1% dữ liệu ban đầu cho mỗi class
     st.subheader("Bước 1: Lấy 1% dữ liệu có nhãn ban đầu")
     X_initial = []
     y_initial = []
@@ -262,14 +258,12 @@ def pseudo_labeling():
     X_initial = np.concatenate(X_initial, axis=0)
     y_initial = np.concatenate(y_initial, axis=0)
 
-    # Hiển thị thông tin
     st.write(f"✅ Số lượng mẫu ban đầu: {X_initial.shape[0]} (khoảng 1% của {y_train_full.shape[0]} mẫu)")
     mask = np.ones(len(X_train_full), dtype=bool)
     mask[np.concatenate([np.where(y_train_full == digit)[0][:max(1, int(0.01 * len(np.where(y_train_full == digit)[0])))] for digit in range(10)])] = False
     X_unlabeled = X_train_full[mask]
     st.write(f"✅ Số lượng mẫu chưa gán nhãn: {X_unlabeled.shape[0]}")
 
-    # Tham số người dùng chọn
     num_layers = st.slider("Số lớp ẩn", 1, 5, 2, key="pseudo_num_layers")
     num_nodes = st.slider("Số node mỗi lớp", 32, 256, 128, key="pseudo_num_nodes")
     activation = st.selectbox("Hàm kích hoạt", ["relu", "sigmoid", "tanh"], key="pseudo_activation")
@@ -285,7 +279,6 @@ def pseudo_labeling():
         key="pseudo_learn_rate"
     )
     
-    # Tùy chọn chế độ lặp
     iteration_mode = st.selectbox("Chọn chế độ lặp:", ["Số vòng lặp cố định", "Gán hết toàn bộ tập train"], key="pseudo_iteration_mode")
     if iteration_mode == "Số vòng lặp cố định":
         max_iterations = st.slider("Số vòng lặp tối đa", 1, 10, 5, key="pseudo_max_iter")
@@ -293,10 +286,8 @@ def pseudo_labeling():
         max_iterations = None
         st.warning("⚠️ Thời gian sẽ lâu do có thể lặp nhiều khi chọn 'Gán hết toàn bộ tập train'!")
 
-    # Nhập tên run cho MLflow
     run_name = st.text_input("🔹 Nhập tên Run:", "Pseudo_Default_Run", key="pseudo_run_name_input")
 
-    # Khởi tạo mô hình với learn_rate
     def build_model():
         model = Sequential()
         model.add(Dense(num_nodes, input_shape=(28 * 28,), activation=activation))
@@ -307,15 +298,28 @@ def pseudo_labeling():
         model.compile(optimizer=Adam(learning_rate=learn_rate), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
         return model
 
-    # Bắt đầu quá trình Pseudo Labelling
     if st.button("Bắt đầu Pseudo Labelling", key="pseudo_start"):
-        mlflow_input()  # Cài đặt MLflow
+        mlflow_input()
         with mlflow.start_run(run_name=f"Pseudo_{run_name}"):
+            # Log các tham số ban đầu
+            mlflow.log_param("model","Pseudo Neural Network")
+            mlflow.log_param("num_samples_total", st.session_state.total_samples)
+            mlflow.log_param("train_size_initial", X_initial.shape[0])
+            mlflow.log_param("test_size", X_test.shape[0])
+            mlflow.log_param("num_layers", num_layers)
+            mlflow.log_param("num_nodes", num_nodes)
+            mlflow.log_param("activation", activation)
+            mlflow.log_param("epochs_per_iteration", epochs)
+            mlflow.log_param("learning_rate", learn_rate)
+            mlflow.log_param("threshold", threshold)
+            mlflow.log_param("iteration_mode", iteration_mode)
+            if max_iterations:
+                mlflow.log_param("max_iterations", max_iterations)
+
             X_labeled = X_initial.copy()
             y_labeled = y_initial.copy()
             X_unlabeled_remaining = X_unlabeled.copy()
 
-            # Thanh tiến trình tổng quát
             progress_bar = st.progress(0)
             status_text = st.empty()
             total_samples = X_train_full.shape[0]
@@ -330,19 +334,18 @@ def pseudo_labeling():
 
                 st.write(f"### Vòng lặp {iteration}")
 
-                # (2) Huấn luyện mô hình
                 model = build_model()
                 progress_callback = ProgressBarCallback(epochs, progress_bar, status_text, max_train_progress=50)
-                model.fit(X_labeled, y_labeled, epochs=epochs, callbacks=[progress_callback], verbose=0)
+                history = model.fit(X_labeled, y_labeled, epochs=epochs, callbacks=[progress_callback], verbose=0)
+                train_acc = history.history['accuracy'][-1]
+                mlflow.log_metric(f"train_accuracy_iter_{iteration}", train_acc)
 
-                # Đánh giá trên tập test
                 status_text.text("📊 Đang đánh giá mô hình trên test set...")
                 progress_bar.progress(60)
                 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
                 st.write(f"Độ chính xác trên tập test: {test_acc:.4f}")
                 mlflow.log_metric(f"test_accuracy_iter_{iteration}", test_acc)
 
-                # (3) Dự đoán nhãn
                 if X_unlabeled_remaining.shape[0] == 0:
                     st.write("✅ Đã gán nhãn hết dữ liệu!")
                     break
@@ -353,7 +356,6 @@ def pseudo_labeling():
                 max_probs = np.max(probabilities, axis=1)
                 predicted_labels = np.argmax(probabilities, axis=1)
 
-                # (4) Gán nhãn giả
                 confident_mask = max_probs >= threshold
                 X_confident = X_unlabeled_remaining[confident_mask]
                 y_confident = predicted_labels[confident_mask]
@@ -361,17 +363,14 @@ def pseudo_labeling():
                 st.write(f"Số mẫu được gán nhãn giả: {X_confident.shape[0]} (ngưỡng: {threshold})")
                 st.write(f"Số mẫu chưa gán nhãn còn lại: {X_unlabeled_remaining.shape[0] - X_confident.shape[0]}")
 
-                # (5) Thêm dữ liệu mới gán nhãn
                 X_labeled = np.concatenate([X_labeled, X_confident])
                 y_labeled = np.concatenate([y_labeled, y_confident])
                 X_unlabeled_remaining = X_unlabeled_remaining[~confident_mask]
 
-                # Cập nhật tiến trình
                 labeled_fraction = X_labeled.shape[0] / total_samples
                 progress_bar.progress(min(int(70 + 25 * labeled_fraction), 95))
                 status_text.text(f"📈 Đã gán nhãn: {X_labeled.shape[0]}/{total_samples} mẫu ({labeled_fraction:.2%})")
 
-                # Logging
                 mlflow.log_metric(f"labeled_samples_iter_{iteration}", X_labeled.shape[0])
                 mlflow.log_metric(f"unlabeled_samples_iter_{iteration}", X_unlabeled_remaining.shape[0])
 
@@ -382,25 +381,29 @@ def pseudo_labeling():
                     st.write("✅ Hoàn tất: Không còn mẫu nào vượt ngưỡng!")
                     break
 
-            # Lưu mô hình cuối cùng
             status_text.text("💾 Đang lưu mô hình và logging...")
             progress_bar.progress(95)
             model_path = f"pseudo_model_final.h5"
             model.save(model_path)
             mlflow.log_artifact(model_path)
 
-            # Lưu mô hình vào session_state
+            model_name = f"pseudo_{num_layers}layers_{num_nodes}nodes_{activation}"
             if "neural_models" not in st.session_state:
                 st.session_state["neural_models"] = []
-            model_name = f"pseudo_{num_layers}layers_{num_nodes}nodes_{activation}"
             st.session_state["neural_models"].append({"name": model_name, "model": model})
-            st.success(f"✅ Mô hình Pseudo Labelling đã được lưu với tên: {model_name}")
 
-            # Hoàn tất tiến trình
             progress_bar.progress(100)
             status_text.text("✅ Quá trình Pseudo Labelling hoàn tất!")
 
-# Hàm train() (đặt sau pseudo_labeling() nếu cần)
+            st.write(f"🔹 **Mô hình đã được lưu với tên:** {model_name}")
+            total_models = len(st.session_state["neural_models"])
+            st.write(f"**Tổng số mô hình hiện tại:** {total_models}")
+            st.write("📋 **Danh sách các mô hình đã lưu:**")
+            for idx, saved_model in enumerate(st.session_state["neural_models"], 1):
+                st.write(f"{idx}. {saved_model['name']}")
+            st.success(f"✅ Đã log dữ liệu cho Pseudo_{run_name}!")
+
+# Hàm train() với phần hiển thị thông tin mô hình
 def train():
     mlflow_input()
 
@@ -433,14 +436,14 @@ def train():
         activation = st.selectbox("Hàm kích hoạt", ["relu", "sigmoid", "tanh"], key="neural_activation_selectbox")
         epochs = st.slider("Số epoch", 1, 50, 10, key="neural_epochs_slider")
         learn_rate = st.number_input(
-        "Tốc độ học (learning rate)", 
-        min_value=0.0001, 
-        max_value=0.1, 
-        value=0.001, 
-        step=0.0001, 
-        format="%.4f",  # Hiển thị 4 chữ số thập phân
-        key="NN_learn_rate"
-    )
+            "Tốc độ học (learning rate)", 
+            min_value=0.0001, 
+            max_value=0.1, 
+            value=0.001, 
+            step=0.0001, 
+            format="%.4f",
+            key="NN_learn_rate"
+        )
 
         model = Sequential()
         model.add(Dense(num_nodes, input_shape=(28 * 28,), activation=activation))
@@ -453,27 +456,65 @@ def train():
         run_name = st.text_input("🔹 Nhập tên Run:", "Default_Run", key="neural_run_name_input")
         if st.button("Huấn luyện mô hình", key="neural_train_button"):
             with mlflow.start_run(run_name=f"Train_{run_name}"):
+                # Log các tham số
+                mlflow.log_param("model", "Neural Network")  # Thêm dòng này
+                mlflow.log_param("num_samples_total", st.session_state.total_samples)
+                mlflow.log_param("train_size", X_train.shape[0])
+                mlflow.log_param("val_size", X_val.shape[0] if X_val.size > 0 else 0)
+                mlflow.log_param("test_size", X_test.shape[0])
+                mlflow.log_param("num_layers", num_layers)
+                mlflow.log_param("num_nodes", num_nodes)
+                mlflow.log_param("activation", activation)
+                mlflow.log_param("epochs", epochs)
+                mlflow.log_param("learning_rate", learn_rate)
+
                 progress_bar = st.progress(0)
                 status_text = st.empty()
-                progress_callback = ProgressBarCallback(epochs, progress_bar, status_text)
+
+                # Huấn luyện với thanh tiến trình
+                progress_callback = ProgressBarCallback(epochs, progress_bar, status_text, max_train_progress=80)
                 if X_val.size > 0:
                     history = model.fit(X_train, y_train, epochs=epochs, validation_data=(X_val, y_val), callbacks=[progress_callback], verbose=0)
+                    val_acc = history.history['val_accuracy'][-1]  # Accuracy cuối cùng trên val set
+                    mlflow.log_metric("val_accuracy", val_acc)
                 else:
                     history = model.fit(X_train, y_train, epochs=epochs, callbacks=[progress_callback], verbose=0)
 
+                train_acc = history.history['accuracy'][-1]  # Accuracy cuối cùng trên train set
+                mlflow.log_metric("train_accuracy", train_acc)
+
+                # Đánh giá trên tập test
+                status_text.text("📊 Đang đánh giá mô hình trên test set...")
+                progress_bar.progress(90)
                 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
                 st.success(f"✅ **Độ chính xác trên test set**: {test_acc:.4f}")
                 mlflow.log_metric("test_accuracy", test_acc)
 
+                # Lưu mô hình
+                status_text.text("💾 Đang lưu mô hình và logging...")
+                progress_bar.progress(95)
                 model_path = f"model_{run_name}.h5"
                 model.save(model_path)
                 mlflow.log_artifact(model_path)
 
+                # Lưu mô hình vào session_state
                 model_name = f"neural_{num_layers}layers_{num_nodes}nodes_{activation}"
                 if "neural_models" not in st.session_state:
                     st.session_state["neural_models"] = []
                 st.session_state["neural_models"].append({"name": model_name, "model": model})
-                st.success(f"✅ Mô hình đã được lưu với tên: {model_name}")
+
+                # Hoàn tất tiến trình
+                progress_bar.progress(100)
+                status_text.text("✅ Quá trình huấn luyện và logging hoàn tất!")
+
+                # Hiển thị thông tin mô hình
+                st.write(f"🔹 **Mô hình đã được lưu với tên:** {model_name}")
+                total_models = len(st.session_state["neural_models"])
+                st.write(f"**Tổng số mô hình hiện tại:** {total_models}")
+                st.write("📋 **Danh sách các mô hình đã lưu:**")
+                for idx, saved_model in enumerate(st.session_state["neural_models"], 1):
+                    st.write(f"{idx}. {saved_model['name']}")
+                st.success(f"✅ Đã log dữ liệu cho Train_{run_name}!")
 
     elif training_mode == "Pseudo Labelling":
         pseudo_labeling()
