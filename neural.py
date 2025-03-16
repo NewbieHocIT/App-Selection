@@ -81,6 +81,10 @@ def split_data():
     val_size = st.slider("📌 Chọn % dữ liệu Validation (trong phần Train)", 0, 50, 15)
     st.write(f"📌 **Tỷ lệ phân chia:** Test={test_size}%, Validation={val_size}%, Train={remaining_size - val_size}%")
 
+    # Placeholder để hiển thị bảng
+    table_placeholder = st.empty()
+
+    # Nút xác nhận và lưu dữ liệu lần đầu
     if st.button("✅ Xác nhận & Lưu", key="luu"):
         st.session_state.data_split_done = True  # Đánh dấu đã chia dữ liệu
         
@@ -120,16 +124,70 @@ def split_data():
         st.session_state.val_size = X_val.shape[0]
         st.session_state.train_size = X_train.shape[0]
 
-        # Hiển thị thông tin chia dữ liệu
-        summary_df = pd.DataFrame({
+        # Lưu bảng kết quả vào session_state và hiển thị trong placeholder
+        st.session_state.summary_df = pd.DataFrame({
             "Tập dữ liệu": ["Train", "Validation", "Test"],
             "Số lượng mẫu": [X_train.shape[0], X_val.shape[0], X_test.shape[0]]
         })
         st.success("✅ Dữ liệu đã được chia thành công!")
-        st.table(summary_df)
+        table_placeholder.table(st.session_state.summary_df)
 
-    elif st.session_state.data_split_done:
-        st.info("✅ Dữ liệu đã được chia. Nhấn **🔄 Chia lại dữ liệu** để thay đổi.")
+    # Nếu dữ liệu đã được chia trước đó
+    if st.session_state.data_split_done:
+        # Hiển thị bảng cũ trong placeholder nếu chưa nhấn "Chia lại dữ liệu"
+        if "summary_df" in st.session_state:
+            table_placeholder.table(st.session_state.summary_df)
+        
+        st.info("✅ Dữ liệu đã được chia. Nhấn nút dưới đây để chia lại dữ liệu nếu muốn thay đổi.")
+        
+        # Nút chia lại dữ liệu
+        if st.button("🔄 Chia lại dữ liệu", key="chia_lai"):
+            # Xóa nội dung placeholder trước khi chia lại
+            table_placeholder.empty()
+            
+            if num_samples == total_samples:
+                X_selected, y_selected = X, y
+            else:
+                X_selected, _, y_selected, _ = train_test_split(
+                    X, y, train_size=num_samples, stratify=y, random_state=42
+                )
+
+            # Chia train/test
+            stratify_option = y_selected if len(np.unique(y_selected)) > 1 else None
+            X_train_full, X_test, y_train_full, y_test = train_test_split(
+                X_selected, y_selected, test_size=test_size/100, stratify=stratify_option, random_state=42
+            )
+
+            # Chia train/val
+            if val_size > 0:
+                stratify_option = y_train_full if len(np.unique(y_train_full)) > 1 else None
+                X_train, X_val, y_train, y_val = train_test_split(
+                    X_train_full, y_train_full, test_size=val_size / (100 - test_size),
+                    stratify=stratify_option, random_state=42
+                )
+            else:
+                X_train, y_train = X_train_full, y_train_full
+                X_val, y_val = np.array([]), np.array([])  # Validation rỗng nếu val_size = 0
+
+            # Lưu dữ liệu vào session_state
+            st.session_state.total_samples = num_samples
+            st.session_state["neural_X_train"] = X_train
+            st.session_state["neural_X_val"] = X_val
+            st.session_state["neural_X_test"] = X_test
+            st.session_state["neural_y_train"] = y_train
+            st.session_state["neural_y_val"] = y_val
+            st.session_state["neural_y_test"] = y_test
+            st.session_state.test_size = X_test.shape[0]
+            st.session_state.val_size = X_val.shape[0]
+            st.session_state.train_size = X_train.shape[0]
+
+            # Lưu và hiển thị bảng kết quả mới trong placeholder
+            st.session_state.summary_df = pd.DataFrame({
+                "Tập dữ liệu": ["Train", "Validation", "Test"],
+                "Số lượng mẫu": [X_train.shape[0], X_val.shape[0], X_test.shape[0]]
+            })
+            st.success("✅ Dữ liệu đã được chia lại thành công!")
+            table_placeholder.table(st.session_state.summary_df)
 
 def mlflow_input():
     DAGSHUB_MLFLOW_URI = "https://dagshub.com/NewbieHocIT/MocMayvsPython.mlflow"
@@ -167,10 +225,185 @@ class ProgressBarCallback(Callback):
         self.progress_bar.progress(self.max_train_progress)
         self.status_text.text("✅ Huấn luyện mô hình hoàn tất, đang chuẩn bị logging...")
 
+
+
+# Hàm thực hiện Pseudo Labelling
+# Hàm thực hiện Pseudo Labelling
+# Hàm thực hiện Pseudo Labelling
+def pseudo_labeling():
+    st.header("⚙️ Pseudo Labelling với Neural Network")
+
+    # Kiểm tra dữ liệu đã được chia chưa
+    if "neural_X_train" not in st.session_state or "neural_X_test" not in st.session_state:
+        st.error("⚠️ Chưa có dữ liệu! Hãy chia dữ liệu trước.")
+        return
+
+    # Lấy dữ liệu từ session_state
+    X_train_full = st.session_state["neural_X_train"]
+    y_train_full = st.session_state["neural_y_train"]
+    X_test = st.session_state["neural_X_test"]
+    y_test = st.session_state["neural_y_test"]
+
+    # Chuẩn hóa dữ liệu
+    X_train_full = X_train_full.reshape(-1, 28 * 28) / 255.0
+    X_test = X_test.reshape(-1, 28 * 28) / 255.0
+
+    # (1) Lấy 1% dữ liệu ban đầu cho mỗi class
+    st.subheader("Bước 1: Lấy 1% dữ liệu có nhãn ban đầu")
+    X_initial = []
+    y_initial = []
+    for digit in range(10):
+        indices = np.where(y_train_full == digit)[0]
+        num_samples_per_class = max(1, int(0.01 * len(indices)))
+        selected_indices = np.random.choice(indices, size=num_samples_per_class, replace=False)
+        X_initial.append(X_train_full[selected_indices])
+        y_initial.append(y_train_full[selected_indices])
+
+    X_initial = np.concatenate(X_initial, axis=0)
+    y_initial = np.concatenate(y_initial, axis=0)
+
+    # Hiển thị thông tin
+    st.write(f"✅ Số lượng mẫu ban đầu: {X_initial.shape[0]} (khoảng 1% của {y_train_full.shape[0]} mẫu)")
+    mask = np.ones(len(X_train_full), dtype=bool)
+    mask[np.concatenate([np.where(y_train_full == digit)[0][:max(1, int(0.01 * len(np.where(y_train_full == digit)[0])))] for digit in range(10)])] = False
+    X_unlabeled = X_train_full[mask]
+    st.write(f"✅ Số lượng mẫu chưa gán nhãn: {X_unlabeled.shape[0]}")
+
+    # Tham số người dùng chọn
+    num_layers = st.slider("Số lớp ẩn", 1, 5, 2, key="pseudo_num_layers")
+    num_nodes = st.slider("Số node mỗi lớp", 32, 256, 128, key="pseudo_num_nodes")
+    activation = st.selectbox("Hàm kích hoạt", ["relu", "sigmoid", "tanh"], key="pseudo_activation")
+    epochs = st.slider("Số epoch mỗi vòng", 1, 50, 10, key="pseudo_epochs")
+    threshold = st.slider("Ngưỡng gán nhãn (threshold)", 0.5, 1.0, 0.95, step=0.01, key="pseudo_threshold")
+    learn_rate = st.number_input(
+        "Tốc độ học (learning rate)", 
+        min_value=0.0001, 
+        max_value=0.1, 
+        value=0.001, 
+        step=0.0001, 
+        format="%.4f",
+        key="pseudo_learn_rate"
+    )
+    
+    # Tùy chọn chế độ lặp
+    iteration_mode = st.selectbox("Chọn chế độ lặp:", ["Số vòng lặp cố định", "Gán hết toàn bộ tập train"], key="pseudo_iteration_mode")
+    if iteration_mode == "Số vòng lặp cố định":
+        max_iterations = st.slider("Số vòng lặp tối đa", 1, 10, 5, key="pseudo_max_iter")
+    else:
+        max_iterations = None
+        st.warning("⚠️ Thời gian sẽ lâu do có thể lặp nhiều khi chọn 'Gán hết toàn bộ tập train'!")
+
+    # Nhập tên run cho MLflow
+    run_name = st.text_input("🔹 Nhập tên Run:", "Pseudo_Default_Run", key="pseudo_run_name_input")
+
+    # Khởi tạo mô hình với learn_rate
+    def build_model():
+        model = Sequential()
+        model.add(Dense(num_nodes, input_shape=(28 * 28,), activation=activation))
+        for _ in range(num_layers - 1):
+            model.add(Dense(num_nodes, activation=activation))
+            model.add(Dropout(0.2))
+        model.add(Dense(10, activation='softmax'))
+        model.compile(optimizer=Adam(learning_rate=learn_rate), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
+        return model
+
+    # Bắt đầu quá trình Pseudo Labelling
+    if st.button("Bắt đầu Pseudo Labelling", key="pseudo_start"):
+        mlflow_input()  # Cài đặt MLflow
+        with mlflow.start_run(run_name=f"Pseudo_{run_name}"):
+            X_labeled = X_initial.copy()
+            y_labeled = y_initial.copy()
+            X_unlabeled_remaining = X_unlabeled.copy()
+
+            # Thanh tiến trình tổng quát
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            total_samples = X_train_full.shape[0]
+            initial_labeled_samples = X_initial.shape[0]
+
+            iteration = 0
+            while True:
+                iteration += 1
+                if max_iterations is not None and iteration > max_iterations:
+                    st.write(f"Đã đạt số vòng lặp tối đa: {max_iterations}")
+                    break
+
+                st.write(f"### Vòng lặp {iteration}")
+
+                # (2) Huấn luyện mô hình
+                model = build_model()
+                progress_callback = ProgressBarCallback(epochs, progress_bar, status_text, max_train_progress=50)
+                model.fit(X_labeled, y_labeled, epochs=epochs, callbacks=[progress_callback], verbose=0)
+
+                # Đánh giá trên tập test
+                status_text.text("📊 Đang đánh giá mô hình trên test set...")
+                progress_bar.progress(60)
+                test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+                st.write(f"Độ chính xác trên tập test: {test_acc:.4f}")
+                mlflow.log_metric(f"test_accuracy_iter_{iteration}", test_acc)
+
+                # (3) Dự đoán nhãn
+                if X_unlabeled_remaining.shape[0] == 0:
+                    st.write("✅ Đã gán nhãn hết dữ liệu!")
+                    break
+
+                status_text.text("🔍 Đang dự đoán nhãn cho dữ liệu chưa gán...")
+                progress_bar.progress(70)
+                probabilities = model.predict(X_unlabeled_remaining)
+                max_probs = np.max(probabilities, axis=1)
+                predicted_labels = np.argmax(probabilities, axis=1)
+
+                # (4) Gán nhãn giả
+                confident_mask = max_probs >= threshold
+                X_confident = X_unlabeled_remaining[confident_mask]
+                y_confident = predicted_labels[confident_mask]
+
+                st.write(f"Số mẫu được gán nhãn giả: {X_confident.shape[0]} (ngưỡng: {threshold})")
+                st.write(f"Số mẫu chưa gán nhãn còn lại: {X_unlabeled_remaining.shape[0] - X_confident.shape[0]}")
+
+                # (5) Thêm dữ liệu mới gán nhãn
+                X_labeled = np.concatenate([X_labeled, X_confident])
+                y_labeled = np.concatenate([y_labeled, y_confident])
+                X_unlabeled_remaining = X_unlabeled_remaining[~confident_mask]
+
+                # Cập nhật tiến trình
+                labeled_fraction = X_labeled.shape[0] / total_samples
+                progress_bar.progress(min(int(70 + 25 * labeled_fraction), 95))
+                status_text.text(f"📈 Đã gán nhãn: {X_labeled.shape[0]}/{total_samples} mẫu ({labeled_fraction:.2%})")
+
+                # Logging
+                mlflow.log_metric(f"labeled_samples_iter_{iteration}", X_labeled.shape[0])
+                mlflow.log_metric(f"unlabeled_samples_iter_{iteration}", X_unlabeled_remaining.shape[0])
+
+                if X_unlabeled_remaining.shape[0] == 0:
+                    st.write("✅ Hoàn tất: Đã gán nhãn toàn bộ tập train!")
+                    break
+                if X_confident.shape[0] == 0:
+                    st.write("✅ Hoàn tất: Không còn mẫu nào vượt ngưỡng!")
+                    break
+
+            # Lưu mô hình cuối cùng
+            status_text.text("💾 Đang lưu mô hình và logging...")
+            progress_bar.progress(95)
+            model_path = f"pseudo_model_final.h5"
+            model.save(model_path)
+            mlflow.log_artifact(model_path)
+
+            # Lưu mô hình vào session_state
+            if "neural_models" not in st.session_state:
+                st.session_state["neural_models"] = []
+            model_name = f"pseudo_{num_layers}layers_{num_nodes}nodes_{activation}"
+            st.session_state["neural_models"].append({"name": model_name, "model": model})
+            st.success(f"✅ Mô hình Pseudo Labelling đã được lưu với tên: {model_name}")
+
+            # Hoàn tất tiến trình
+            progress_bar.progress(100)
+            status_text.text("✅ Quá trình Pseudo Labelling hoàn tất!")
+
+# Hàm train() (đặt sau pseudo_labeling() nếu cần)
 def train():
     mlflow_input()
 
-    # Kiểm tra xem dữ liệu đã được chia chưa
     if (
         "neural_X_train" not in st.session_state
         or "neural_X_val" not in st.session_state
@@ -179,162 +412,81 @@ def train():
         st.error("⚠️ Chưa có dữ liệu! Hãy chia dữ liệu trước.")
         return
 
-    # Lấy dữ liệu từ session_state
-    X_train = st.session_state["neural_X_train"]
-    X_val = st.session_state["neural_X_val"]
-    X_test = st.session_state["neural_X_test"]
-    y_train = st.session_state["neural_y_train"]
-    y_val = st.session_state["neural_y_val"]
-    y_test = st.session_state["neural_y_test"]
-
-    # Chuyển đổi dữ liệu
-    X_train = X_train.reshape(-1, 28 * 28) / 255.0
-    X_test = X_test.reshape(-1, 28 * 28) / 255.0
-    if X_val.size > 0:
-        X_val = X_val.reshape(-1, 28 * 28) / 255.0
-
     st.header("⚙️ Chọn mô hình & Huấn luyện")
+    training_mode = st.selectbox("Chọn chế độ huấn luyện:", ["Regular Neural Network", "Pseudo Labelling"], key="train_mode")
 
-    model_choice = st.selectbox(
-        "Chọn mô hình:", 
-        ["Neural Network"], 
-        key="neural_model_choice_selectbox"
-    )
+    if training_mode == "Regular Neural Network":
+        X_train = st.session_state["neural_X_train"]
+        X_val = st.session_state["neural_X_val"]
+        X_test = st.session_state["neural_X_test"]
+        y_train = st.session_state["neural_y_train"]
+        y_val = st.session_state["neural_y_val"]
+        y_test = st.session_state["neural_y_test"]
 
-    if model_choice == "Neural Network":
-        st.markdown("""
-        - **🧠 Neural Network (Mạng nơ-ron)** là một mô hình học sâu có khả năng học các đặc trưng phức tạp từ dữ liệu.
-        - **Tham số cần chọn:**  
-            - **Số lớp ẩn**: Số lượng lớp ẩn trong mạng.  
-            - **Số node mỗi lớp**: Số lượng node trong mỗi lớp ẩn.  
-            - **Hàm kích hoạt**: Hàm kích hoạt cho các lớp ẩn.  
-            - **Tốc độ học**: Tốc độ học của thuật toán tối ưu.  
-        """)
-        
+        X_train = X_train.reshape(-1, 28 * 28) / 255.0
+        X_test = X_test.reshape(-1, 28 * 28) / 255.0
+        if X_val.size > 0:
+            X_val = X_val.reshape(-1, 28 * 28) / 255.0
+
         num_layers = st.slider("Số lớp ẩn", 1, 5, 2, key="neural_num_layers_slider")
         num_nodes = st.slider("Số node mỗi lớp", 32, 256, 128, key="neural_num_nodes_slider")
         activation = st.selectbox("Hàm kích hoạt", ["relu", "sigmoid", "tanh"], key="neural_activation_selectbox")
         epochs = st.slider("Số epoch", 1, 50, 10, key="neural_epochs_slider")
+        learn_rate = st.number_input(
+        "Tốc độ học (learning rate)", 
+        min_value=0.0001, 
+        max_value=0.1, 
+        value=0.001, 
+        step=0.0001, 
+        format="%.4f",  # Hiển thị 4 chữ số thập phân
+        key="NN_learn_rate"
+    )
 
-        # Xây dựng mô hình
         model = Sequential()
         model.add(Dense(num_nodes, input_shape=(28 * 28,), activation=activation))
         for _ in range(num_layers - 1):
             model.add(Dense(num_nodes, activation=activation))
+            model.add(Dropout(0.1))
         model.add(Dense(10, activation='softmax'))
-        
-        # Biên dịch mô hình
-        model.compile(optimizer=Adam(learning_rate=0.01),
-                      loss='sparse_categorical_crossentropy',
-                      metrics=['accuracy'])
-    
-    run_name = st.text_input("🔹 Nhập tên Run:", "Default_Run", key="neural_run_name_input")
-    st.session_state["run_name"] = run_name if run_name else "default_run"
-    
-    if st.button("Huấn luyện mô hình", key="neural_train_button"):
-        with mlflow.start_run(run_name=f"Train_{st.session_state['run_name']}"):
-            mlflow.log_param("test_size", st.session_state.test_size)
-            mlflow.log_param("val_size", st.session_state.val_size)
-            mlflow.log_param("train_size", st.session_state.train_size)
-            mlflow.log_param("num_samples", st.session_state.total_samples)
+        model.compile(optimizer=Adam(learning_rate=learn_rate), loss='sparse_categorical_crossentropy', metrics=['accuracy'])
 
-            progress_bar = st.progress(0)  # Thanh tiến trình
-            status_text = st.empty()  # Hiển thị trạng thái từng bước
+        run_name = st.text_input("🔹 Nhập tên Run:", "Default_Run", key="neural_run_name_input")
+        if st.button("Huấn luyện mô hình", key="neural_train_button"):
+            with mlflow.start_run(run_name=f"Train_{run_name}"):
+                progress_bar = st.progress(0)
+                status_text = st.empty()
+                progress_callback = ProgressBarCallback(epochs, progress_bar, status_text)
+                if X_val.size > 0:
+                    history = model.fit(X_train, y_train, epochs=epochs, validation_data=(X_val, y_val), callbacks=[progress_callback], verbose=0)
+                else:
+                    history = model.fit(X_train, y_train, epochs=epochs, callbacks=[progress_callback], verbose=0)
 
-            # Giai đoạn 1: Huấn luyện (chiếm 80% tiến trình)
-            progress_callback = ProgressBarCallback(epochs, progress_bar, status_text, max_train_progress=80)
+                test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+                st.success(f"✅ **Độ chính xác trên test set**: {test_acc:.4f}")
+                mlflow.log_metric("test_accuracy", test_acc)
 
-            if X_val.size > 0:
-                history = model.fit(
-                    X_train, y_train, 
-                    epochs=epochs, 
-                    validation_data=(X_val, y_val),
-                    callbacks=[progress_callback],
-                    verbose=0
-                )
-            else:
-                history = model.fit(
-                    X_train, y_train, 
-                    epochs=epochs, 
-                    callbacks=[progress_callback],
-                    verbose=0
-                )
+                model_path = f"model_{run_name}.h5"
+                model.save(model_path)
+                mlflow.log_artifact(model_path)
 
-            # Giai đoạn 2: Logging và đánh giá (chiếm 20% còn lại)
-            status_text.text("📊 Đang đánh giá mô hình trên test set...")
-            progress_bar.progress(85)  # Cập nhật tiến trình sau khi đánh giá test set
-            test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
+                model_name = f"neural_{num_layers}layers_{num_nodes}nodes_{activation}"
+                if "neural_models" not in st.session_state:
+                    st.session_state["neural_models"] = []
+                st.session_state["neural_models"].append({"name": model_name, "model": model})
+                st.success(f"✅ Mô hình đã được lưu với tên: {model_name}")
 
-            # Hiển thị kết quả
-            if X_val.size > 0:
-                train_accuracy = history.history['accuracy'][-1]
-                val_accuracy = history.history['val_accuracy'][-1]
-                st.success(f"✅ **Độ chính xác trên tập train**: {train_accuracy:.4f}")
-                st.success(f"✅ **Độ chính xác trên tập validation**: {val_accuracy:.4f}")
-            else:
-                train_accuracy = history.history['accuracy'][-1]
-                st.success(f"✅ **Độ chính xác trên tập train**: {train_accuracy:.4f}")
-            st.success(f"✅ **Độ chính xác trên test set**: {test_acc:.4f}")
-
-            # Logging với MLflow
-            status_text.text("📝 Đang ghi log vào MLflow...")
-            progress_bar.progress(90)  # Cập nhật tiến trình khi bắt đầu logging
-
-            mlflow.log_param("model", model_choice)
-            mlflow.log_param("num_layers", num_layers)
-            mlflow.log_param("num_nodes", num_nodes)
-            mlflow.log_param("activation", activation)
-            mlflow.log_param("learning_rate", 0.01)
-            mlflow.log_param("epochs", epochs)
-
-            mlflow.log_metric("test_accuracy", test_acc)
-            if X_val.size > 0:
-                mlflow.log_metric("train_accuracy", train_accuracy)
-                mlflow.log_metric("val_accuracy", val_accuracy)
-
-            # Lưu mô hình
-            model_path = f"model_{st.session_state['run_name']}.h5"
-            model.save(model_path)
-            mlflow.log_artifact(model_path)
-            progress_bar.progress(95)  # Cập nhật tiến trình khi lưu mô hình
-
-            # Lưu thông tin mô hình vào session_state
-            if "neural_models" not in st.session_state:
-                st.session_state["neural_models"] = []
-
-            model_name = model_choice.lower().replace(" ", "_")
-            model_name += f"_{num_layers}layers_{num_nodes}nodes_{activation}"
-            existing_model = next((item for item in st.session_state["neural_models"] if item["name"] == model_name), None)
-
-            if existing_model:
-                count = 1
-                new_model_name = f"{model_name}_{count}"
-                while any(item["name"] == new_model_name for item in st.session_state["neural_models"]):
-                    count += 1
-                    new_model_name = f"{model_name}_{count}"
-                model_name = new_model_name
-                st.warning(f"⚠️ Mô hình được lưu với tên: {model_name}")
-
-            st.session_state["neural_models"].append({"name": model_name, "model": model})
-            st.write(f"🔹 Mô hình đã được lưu với tên: {model_name}")
-            st.write(f"Tổng số mô hình hiện tại: {len(st.session_state['neural_models'])}")
-
-            # Hiển thị danh sách mô hình
-            st.write("📋 Danh sách các mô hình đã lưu:")
-            model_names = [model["name"] for model in st.session_state["neural_models"]]
-            st.write(", ".join(model_names))
-
-            # Hoàn tất tiến trình
-            progress_bar.progress(100)
-            status_text.text("✅ Huấn luyện và logging hoàn tất!")
-            st.success(f"✅ Đã log dữ liệu cho **Train_{st.session_state['run_name']}**!")
+    elif training_mode == "Pseudo Labelling":
+        pseudo_labeling()
             
 def preprocess_image(image):
     """Xử lý ảnh đầu vào: Chuyển về grayscale, resize, chuẩn hóa"""
     image = image.convert("L")
-    image = image.resize((28, 28))  # Resize về kích thước phù hợp
-    img_array = np.array(image) / 255.0  # Chuẩn hóa pixel về [0,1]
-    return img_array.reshape(1, -1)  # Chuyển thành vector 1D
+    image = image.resize((28, 28))
+    img_array = np.array(image) / 255.0
+    # Đảo ngược màu nếu cần (nếu dữ liệu huấn luyện có nền đen)
+    img_array = 1 - img_array  # Thử thêm dòng này
+    st.image(img_array.reshape(28, 28), caption="Ảnh sau khi xử lý", clamp=True)
+    return img_array.reshape(1, -1)
 
 def du_doan():
     st.title("🔢 Dự đoán chữ số viết tay")
@@ -465,21 +617,20 @@ def show_experiment_selector():
     else:
         st.warning("⚠ Không tìm thấy thông tin cho run này.")
         
+# Cập nhật hàm Neural() để tích hợp
 def Neural():
     st.title("🖊️ MNIST Neural Network App")
-    tab1, tab2, tab3, tab4 = st.tabs(["📘 Data", "⚙️ Huấn luyện", "🔢 Dự đoán", "🔥Mlflow"])
+    tab1, tab2, tab3, tab4 = st.tabs(["📘 Data", "⚙️ Huấn luyện", "🔢 Dự đoán", "🔥 Mlflow"])
 
     with tab1:
         data()
-        
     with tab2:
         split_data()
         train()
-        
     with tab3:
-        du_doan()   
+        du_doan()
     with tab4:
-        show_experiment_selector()  
+        show_experiment_selector()
 
-if __name__ == "__main__":
+if __name__=="__main__":
     Neural()
